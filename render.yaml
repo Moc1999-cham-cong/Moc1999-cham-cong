@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: moc1999-cham-cong
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ADMIN_KEY
+        sync: false
+      - key: DB_FILE
+        value: /var/data/moc1999.db
+    disk:
+      name: moc1999-data
+      mountPath: /var/data
+      sizeGB: 1
