@@ -1,133 +1,47 @@
-<!doctype html>
-<html lang="vi"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mộc 1999 - Chấm công đa công trình</title>
-<style>
-body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#f5f5f5;color:#222}
-header{background:#222;color:white;padding:18px 16px;font-weight:800}
-.wrap{max-width:1100px;margin:auto;padding:14px}.card{background:white;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 2px 10px #0001}
-button{border:0;border-radius:10px;padding:11px 14px;margin:4px;cursor:pointer;font-weight:700}
-.primary{background:#222;color:#fff}.green{background:#dff5e5}.red{background:#ffe1e1}.gray{background:#eee}
-input,select{padding:10px;border:1px solid #ddd;border-radius:9px;width:100%;box-sizing:border-box;margin:5px 0}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid #eee;text-align:left;font-size:13px}
-#qr{max-width:280px;width:100%;display:block;margin:auto}.muted{color:#777;font-size:13px}.ok{color:#087a2f;font-weight:700}.err{color:#b00020;font-weight:700}
-</style></head><body>
-<header>CTY TNHH MỘC 1999 – CHẤM CÔNG ĐA CÔNG TRÌNH</header>
-<div class="wrap">
-<div class="card">
-<h3>👷 Nhân viên</h3>
-<div class="grid"><div><label>Mã nhân viên</label><input id="eid" placeholder="VD: 1"></div><div><label>Mật khẩu</label><input id="epass" type="password" value="123456"></div></div>
-<button class="primary" onclick="login()">Đăng nhập</button>
-<span id="loginMsg"></span>
-</div>
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mộc 1999 - Chấm công</title><style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#f3f3f3;color:#191919}
+header{background:#151515;color:#fff;padding:18px;font-weight:800;font-size:18px}.wrap{max-width:1000px;margin:auto;padding:14px}
+.card{background:#fff;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 3px 18px #0001}.tabs{display:flex;gap:7px;overflow:auto}
+button,select,input{font:inherit;padding:12px;border-radius:11px;border:1px solid #ddd}button{background:#151515;color:#fff;border:0;cursor:pointer}button.gray{background:#777}
+select,input{width:100%;margin:5px 0 10px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.big{font-size:32px;font-weight:800;margin:12px 0}.success{background:#eaf8ec;padding:11px;border-radius:10px}.error{background:#ffeded;padding:11px;border-radius:10px}
+table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid #eee;text-align:left;font-size:13px}.hide{display:none}.muted{color:#777}
+@media(max-width:650px){.grid{grid-template-columns:1fr}th,td{font-size:12px}}
+</style></head><body><header>CTY TNHH MỘC 1999 · CHẤM CÔNG ONLINE</header><div class="wrap">
+<div class="tabs"><button onclick="tab('staff')">📱 Nhân viên</button><button onclick="tab('manager')">🔐 Quản lý</button></div>
+<section id="staff" class="card"><h2>Chấm công</h2>
+<div id="login"><label>Nhân viên</label><select id="eid"></select><label>Mật khẩu</label><input id="pw" type="password" value="123456"><button onclick="login()">Đăng nhập</button></div>
+<div id="work" class="hide"><b id="who"></b><div class="big" id="clock"></div><button onclick="punch('in')">VÀO CA</button> <button class="gray" onclick="punch('out')">RA CA</button><p id="status" class="muted"></p><button class="gray" onclick="logout()">Đăng xuất</button></div><div id="msg"></div></section>
 
-<div id="employee" class="card" style="display:none">
-<h3>📍 Chấm công</h3>
-<p id="who"></p>
-<label>Công trình</label><select id="project"></select>
-<p class="muted">Bắt buộc: quét QR đang hiển thị tại đúng công trình + bật GPS.</p>
-<button class="green" onclick="punch('in')">🟢 VÀO CA</button>
-<button class="red" onclick="punch('out')">🔴 RA CA</button>
-<button class="gray" onclick="loadToday()">🔄 Xem hôm nay</button>
-<div id="msg"></div>
-<div id="today"></div>
-</div>
-
-<div class="card">
-<h3>🔐 Quản lý</h3>
-<input id="akey" placeholder="ADMIN_KEY">
-<button class="primary" onclick="adminLogin()">Mở quản lý</button>
-<span id="adminMsg"></span>
-<div id="admin" style="display:none">
-<h4>🏗️ Công trình</h4>
-<p class="muted">Tạo công trình bằng tọa độ GPS. Có thể lấy tọa độ bằng Google Maps rồi nhập Lat/Lng.</p>
-<div class="grid">
-<input id="pname" placeholder="Tên công trình">
-<input id="paddr" placeholder="Địa chỉ">
-<input id="plat" placeholder="Latitude">
-<input id="plng" placeholder="Longitude">
-<input id="pradius" placeholder="Bán kính GPS (m)" value="200">
-</div>
-<button class="primary" onclick="addProject()">+ Thêm công trình</button>
-<div id="plist"></div>
-
-<h4>📲 QR chấm công tại công trình</h4>
-<select id="qrProject"></select>
-<button class="primary" onclick="showQR()">Hiện QR</button>
-<div id="qrbox"></div>
-
-<h4>👥 Nhân viên</h4>
-<div class="grid">
-<input id="ename" placeholder="Họ tên">
-<input id="edep" placeholder="Bộ phận">
-<input id="esal" placeholder="Lương">
-<input id="newpass" placeholder="Mật khẩu" value="123456">
-</div>
-<button class="primary" onclick="addEmployee()">+ Thêm nhân viên</button>
-<div id="elist"></div>
-
-<h4>📊 Báo cáo</h4>
-<input id="month" type="month">
-<button class="primary" onclick="report()">Xem báo cáo</button>
-<button class="gray" onclick="exportCSV()">Xuất CSV</button>
-<div id="report"></div>
-</div></div>
-</div>
+<section id="manager" class="card hide"><h2>Quản lý</h2><div id="mlog"><input id="akey" type="password" placeholder="Mã quản lý"><button onclick="manager()">Đăng nhập</button></div><div id="mapp" class="hide">
+<h3>📲 QR chấm công tại công ty</h3>
+<div id="qrbox"><button onclick="showQR()">Hiện QR chấm công</button></div>
+<p class="muted">QR tự đổi mỗi 30 giây. Nhân viên quét QR rồi đăng nhập/chấm công; GPS vẫn được kiểm tra.</p>
+<h3>Thêm nhân viên</h3><div class="grid"><input id="n" placeholder="Họ tên"><input id="phone" placeholder="SĐT"><input id="dept" placeholder="Bộ phận"><input id="sal" type="number" placeholder="Lương tháng"><input id="std" type="number" value="26" placeholder="Ngày chuẩn"><input id="otr" type="number" placeholder="Đơn giá OT/giờ"><input id="epw" value="123456" placeholder="Mật khẩu nhân viên"></div><button onclick="add()">Thêm nhân viên</button>
+<h3>Báo cáo</h3><input id="month" type="month"><button onclick="report()">Xem báo cáo</button><button class="gray" onclick="csv()">Xuất CSV</button><div id="rep"></div>
+<h3>Lịch sử thao tác</h3><button class="gray" onclick="audit()">Xem</button><div id="aud"></div></div></section></div>
 <script>
-let emp=null, adminKey="", currentQR="", qrTimer=null;
-const qs=new URLSearchParams(location.search);
-function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-async function login(){
- const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employeeId:+eid.value,password:epass.value})});
- const d=await r.json(); loginMsg.textContent=r.ok?"Đăng nhập thành công":d.error; loginMsg.className=r.ok?"ok":"err";
- if(r.ok){emp=d;employee.style.display='block';who.textContent=`${d.name} – ${d.department||""}`;await loadProjects();await loadToday();}
-}
-async function loadProjects(){
- const r=await fetch('/api/projects');const ps=await r.json();
- project.innerHTML=ps.map(p=>`<option value="${p.id}">${esc(p.name)} – bán kính ${p.radius}m</option>`).join("");
-}
-function headers(){return {'Content-Type':'application/json','x-employee-id':emp.id,'x-employee-password':epass.value}}
-async function punch(action){
- const p=project.value;if(!p)return;
- if(!navigator.geolocation){msg.innerHTML='<p class=err>Thiết bị không hỗ trợ GPS</p>';return}
- if(!currentQR){msg.innerHTML='<p class=err>Hãy quét QR của công trình trước.</p>';return}
- navigator.geolocation.getCurrentPosition(async pos=>{
-  const r=await fetch('/api/punch',{method:'POST',headers:headers(),body:JSON.stringify({projectId:+p,action,lat:pos.coords.latitude,lng:pos.coords.longitude,qrToken:currentQR})});
-  const d=await r.json();msg.innerHTML=`<p class="${r.ok?'ok':'err'}">${esc(d.message||d.error)}</p>`;loadToday();
- },()=>msg.innerHTML='<p class=err>Không lấy được GPS. Hãy bật định vị.</p>',{enableHighAccuracy:true,timeout:10000});
-}
-async function loadToday(){
- if(!emp)return;const r=await fetch('/api/my-today',{headers:headers()});const rows=await r.json();
- today.innerHTML='<h4>Hôm nay</h4><table><tr><th>Công trình</th><th>Vào</th><th>Ra</th></tr>'+rows.map(x=>`<tr><td>${esc(x.project_name)}</td><td>${x.in_time||""}</td><td>${x.out_time||"—"}</td></tr>`).join("")+'</table>';
-}
-async function adminLogin(){adminKey=akey.value;const r=await fetch('/api/employees',{headers:{'x-admin-key':adminKey}});if(!r.ok){adminMsg.textContent='Sai ADMIN_KEY';adminMsg.className='err';return}admin.style.display='block';adminMsg.textContent='Đã mở quản lý';loadAdmin();}
-async function adminFetch(url,opt={}){opt.headers=Object.assign({},opt.headers||{},{"x-admin-key":adminKey,"Content-Type":"application/json"});return fetch(url,opt)}
-async function loadAdmin(){const [pr,er]=await Promise.all([fetch('/api/projects'),adminFetch('/api/employees')]);renderProjects(await pr.json());renderEmployees(await er.json());}
-function renderProjects(ps){plist.innerHTML='<table><tr><th>Công trình</th><th>Địa chỉ</th><th>GPS</th><th>R</th></tr>'+ps.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.address)}</td><td>${p.lat}, ${p.lng}</td><td>${p.radius}m</td></tr>`).join("")+'</table>';qrProject.innerHTML=ps.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");}
-function renderEmployees(es){elist.innerHTML='<table><tr><th>ID</th><th>Tên</th><th>Bộ phận</th><th>Lương</th></tr>'+es.map(e=>`<tr><td>${e.id}</td><td>${esc(e.name)}</td><td>${esc(e.department)}</td><td>${Number(e.salary||0).toLocaleString("vi-VN")}</td></tr>`).join("")+'</table>'}
-async function addProject(){
- const body={name:pname.value,address:paddr.value,lat:+plat.value,lng:+plng.value,radius:+pradius.value};
- const r=await adminFetch('/api/projects',{method:'POST',body:JSON.stringify(body)});const d=await r.json();alert(r.ok?'Đã thêm công trình':d.error);if(r.ok)loadAdmin();
-}
-async function addEmployee(){
- const body={name:ename.value,department:edep.value,salary:+esal.value,password:newpass.value};
- const r=await adminFetch('/api/employees',{method:'POST',body:JSON.stringify(body)});const d=await r.json();alert(r.ok?`Đã thêm. Mã nhân viên: ${d.id}`:d.error);if(r.ok)loadAdmin();
-}
+let token='',employees=[],cfg={},qrTokenValue=new URLSearchParams(location.search).get('qr')||'';
+const $=x=>document.getElementById(x);
+async function api(u,o={}){let r=await fetch(u,o),j=await r.json();if(!r.ok)throw Error(j.error||'Lỗi');return j}
+async function init(){employees=await api('/api/employees');$('eid').innerHTML=employees.map(e=>`<option value="${e.id}">${e.name}${e.dept?' · '+e.dept:''}</option>`).join('');cfg=await api('/api/config');$('month').value=new Date().toISOString().slice(0,7);setInterval(()=>$('clock').textContent=new Date().toLocaleTimeString('vi-VN'),1000)}
+async function login(){try{let j=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employeeId:+$('eid').value,password:$('pw').value})});token=j;localStorage.setItem('moc_emp',JSON.stringify(j));$('login').classList.add('hide');$('work').classList.remove('hide');$('who').textContent=j.name;loadToday()}catch(e){$('msg').innerHTML='<div class="error">'+e.message+'</div>'}}
+function logout(){localStorage.removeItem('moc_emp');location.reload()}
+async function loadToday(){let j=await api('/api/my-today',{headers:{'x-employee-id':token.id,'x-employee-password':$('pw').value}});$('status').textContent=j.time_in?`Hôm nay: vào ${j.time_in}${j.time_out?' · ra '+j.time_out:''}`:'Chưa chấm công hôm nay'}
+async function punch(type){if(!navigator.geolocation)return $('msg').innerHTML='<div class="error">Thiết bị không hỗ trợ GPS</div>';navigator.geolocation.getCurrentPosition(async p=>{try{let j=await api('/api/punch/'+type,{method:'POST',headers:{'Content-Type':'application/json','x-employee-id':token.id,'x-employee-password':$('pw').value},body:JSON.stringify({lat:p.coords.latitude,lng:p.coords.longitude,qrToken:qrTokenValue})});$('msg').innerHTML=`<div class="success">Đã ${type==='in'?'VÀO CA':'RA CA'} lúc <b>${j.time}</b> · cách điểm ${j.distance}m</div>`;loadToday()}catch(e){$('msg').innerHTML='<div class="error">'+e.message+'</div>'}},{enableHighAccuracy:true,timeout:10000})}
+function tab(x){$('staff').classList.toggle('hide',x!=='staff');$('manager').classList.toggle('hide',x!=='manager')}
+let key='';function manager(){key=$('akey').value;$('mlog').classList.add('hide');$('mapp').classList.remove('hide')}
+async function add(){try{await api('/api/employees',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':key},body:JSON.stringify({name:$('n').value,phone:$('phone').value,dept:$('dept').value,salary:$('sal').value,standard:$('std').value,otRate:$('otr').value,password:$('epw').value})});location.reload()}catch(e){alert(e.message)}}
 async function showQR(){
- const r=await fetch('/api/qr');const d=await r.json();currentQR=d.token;
- const url=d.url+'&project='+encodeURIComponent(qrProject.value);
- qrbox.innerHTML=`<img id=qr src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}"><p class=muted>QR tự đổi mỗi 30 giây. Chỉ hiển thị tại công trình.</p>`;
- clearInterval(qrTimer);qrTimer=setInterval(showQR,28000);
+ try{
+  let j=await api('/api/qr',{headers:{'x-admin-key':key}});
+  $('qrbox').innerHTML=`<img src="${j.data}" style="width:280px;max-width:100%;display:block;margin:10px auto"><div class="muted" style="text-align:center">QR đổi sau ${j.expiresIn} giây</div>`;
+  setTimeout(showQR,28000);
+ }catch(e){$('qrbox').innerHTML='<div class="error">'+e.message+'</div>'}
 }
-async function report(){
- const m=month.value||new Date().toISOString().slice(0,7);const r=await adminFetch('/api/report?month='+m);const rows=await r.json();
- window.lastRows=rows;report.innerHTML='<table><tr><th>Ngày</th><th>Nhân viên</th><th>Công trình</th><th>Vào</th><th>Ra</th><th>Giờ</th></tr>'+rows.map(x=>`<tr><td>${x.work_date}</td><td>${esc(x.employee_name)}</td><td>${esc(x.project_name)}</td><td>${x.in_time||""}</td><td>${x.out_time||""}</td><td>${x.hours}</td></tr>`).join("")+'</table>';
-}
-function exportCSV(){
- const rows=window.lastRows||[];let csv="Ngày,Nhân viên,Bộ phận,Công trình,Vào,Ra,Số giờ\n"+rows.map(x=>[x.work_date,x.employee_name,x.department,x.project_name,x.in_time,x.out_time,x.hours].map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");
- const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download="Moc1999_BaoCao_ChamCong.csv";a.click();
-}
-if(qs.get("qr")) currentQR=qs.get("qr");
-month.value=new Date().toISOString().slice(0,7);
+async function report(){try{let a=await api('/api/report?month='+$('month').value,{headers:{'x-admin-key':key}});let m={};a.forEach(r=>{let x=m[r.employee_id]||{name:r.name,days:0,h:0,ot:0};if(r.time_in)x.days++;x.h+=r.hours;x.ot+=r.ot;m[r.employee_id]=x});$('rep').innerHTML='<table><tr><th>Nhân viên</th><th>Ngày</th><th>Giờ</th><th>OT</th></tr>'+Object.values(m).map(x=>`<tr><td>${x.name}</td><td>${x.days}</td><td>${x.h.toFixed(2)}</td><td>${x.ot.toFixed(2)}</td></tr>`).join('')+'</table>';window._rows=a}catch(e){alert(e.message)}}
+function csv(){let a=window._rows||[];let s='Ngày,Nhân viên,Vào,Ra,Giờ,OT\\n'+a.map(x=>`${x.work_date},${x.name},${x.time_in||''},${x.time_out||''},${x.hours},${x.ot}`).join('\\n');let b=new Blob(['\\ufeff'+s],{type:'text/csv;charset=utf-8'}),u=URL.createObjectURL(b),a1=document.createElement('a');a1.href=u;a1.download='Moc1999_ChamCong.csv';a1.click();URL.revokeObjectURL(u)}
+async function audit(){let a=await api('/api/audit',{headers:{'x-admin-key':key}});$('aud').innerHTML='<table><tr><th>Thời gian</th><th>NV</th><th>Hành động</th><th>Chi tiết</th></tr>'+a.map(x=>`<tr><td>${x.created_at}</td><td>${x.name||''}</td><td>${x.action}</td><td>${x.detail||''}</td></tr>`).join('')+'</table>'}
+init();
 </script></body></html>
