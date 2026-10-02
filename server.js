@@ -1,197 +1,97 @@
 
-const express = require("express");
-const Database = require("better-sqlite3");
-const crypto = require("crypto");
-const path = require("path");
-
-const app = express();
-app.use(express.json());
-app.use(express.static(__dirname));
-
-const PORT = process.env.PORT || 3000;
-const DB_FILE = process.env.DB_FILE || path.join(__dirname, "moc1999.db");
-const ADMIN_KEY = process.env.ADMIN_KEY || "MOC1999-ADMIN";
-
-const db = new Database(DB_FILE);
-db.pragma("journal_mode = WAL");
+const express=require('express'), path=require('path'), fs=require('fs'), crypto=require('crypto');
+const Database=require('better-sqlite3');
+const QRCode=require('qrcode');
+const app=express(), PORT=process.env.PORT||3000;
+app.set('trust proxy', 1);
+const ADMIN_KEY=process.env.ADMIN_KEY||'MOC1999-ADMIN';
+const COMPANY_LAT=Number(process.env.COMPANY_LAT||'11.9404');
+const COMPANY_LNG=Number(process.env.COMPANY_LNG||'108.4583');
+const GPS_RADIUS=Number(process.env.GPS_RADIUS||'200');
+const db=new Database(process.env.DB_FILE||'/var/data/moc1999.db');
+db.pragma('journal_mode=WAL');
 db.exec(`
-CREATE TABLE IF NOT EXISTS employees (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  department TEXT DEFAULT '',
-  salary REAL DEFAULT 0,
-  password TEXT DEFAULT '123456',
-  active INTEGER DEFAULT 1
-);
-CREATE TABLE IF NOT EXISTS projects (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  address TEXT DEFAULT '',
-  lat REAL NOT NULL,
-  lng REAL NOT NULL,
-  radius REAL DEFAULT 200,
-  active INTEGER DEFAULT 1
-);
-CREATE TABLE IF NOT EXISTS attendance (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  employee_id INTEGER NOT NULL,
-  project_id INTEGER NOT NULL,
-  work_date TEXT NOT NULL,
-  in_time TEXT,
-  in_lat REAL,
-  in_lng REAL,
-  out_time TEXT,
-  out_lat REAL,
-  out_lng REAL,
-  qr_bucket INTEGER,
-  note TEXT DEFAULT '',
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(employee_id) REFERENCES employees(id),
-  FOREIGN KEY(project_id) REFERENCES projects(id)
-);
-CREATE TABLE IF NOT EXISTS audit_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  action TEXT,
-  employee_id INTEGER,
-  project_id INTEGER,
-  detail TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+CREATE TABLE IF NOT EXISTS employees(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,phone TEXT DEFAULT '',
+ dept TEXT DEFAULT '',salary REAL DEFAULT 0,standard_days REAL DEFAULT 26,
+ ot_rate REAL DEFAULT 0,password_hash TEXT NOT NULL,active INTEGER DEFAULT 1);
+CREATE TABLE IF NOT EXISTS attendance(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,employee_id INTEGER NOT NULL,work_date TEXT NOT NULL,
+ time_in TEXT,time_out TEXT,in_lat REAL,in_lng REAL,out_lat REAL,out_lng REAL,
+ in_distance REAL,out_distance REAL,note TEXT DEFAULT '',status TEXT DEFAULT 'pending',
+ created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE(employee_id,work_date));
+CREATE TABLE IF NOT EXISTS audit(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,action TEXT,employee_id INTEGER,work_date TEXT,
+ detail TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 `);
-
-function qrToken(bucket) {
-  return crypto.createHash("sha256").update(`${ADMIN_KEY}:${bucket}`).digest("hex").slice(0, 24);
+app.use(express.json());
+const PUBLIC_DIR=path.join(__dirname,'public');
+if(fs.existsSync(PUBLIC_DIR)) app.use(express.static(PUBLIC_DIR));
+app.get('/',(req,res)=>{
+  const f=path.join(PUBLIC_DIR,'index.html');
+  if(fs.existsSync(f)) return res.sendFile(f);
+  res.type('html').send(`<!doctype html><html lang=\"vi\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Mộc 1999 - Chấm công</title></head><body style=\"font-family:Arial;padding:30px\"><h2>CTY TNHH MỘC 1999 – PHẦN MỀM CHẤM CÔNG</h2><p>Server đã chạy nhưng giao diện chưa được tải lên GitHub. Hãy upload thư mục <b>public</b> chứa <b>index.html</b>.</p></body></html>`);
+});
+function sha(s){return crypto.createHash('sha256').update(String(s)).digest('hex')}
+function now(){return new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}))}
+function pad(n){return String(n).padStart(2,'0')}
+function dateVN(){let d=now();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
+function timeVN(){let d=now();return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`}
+function hours(a,b){if(!a||!b)return 0;let x=a.split(':').map(Number),y=b.split(':').map(Number);let A=x[0]*3600+x[1]*60+x[2],B=y[0]*3600+y[1]*60+y[2];if(B<A)B+=86400;return Math.max(0,(B-A)/3600)}
+function qrToken(){
+ const bucket=Math.floor(Date.now()/30000);
+ return crypto.createHash('sha256').update(String(bucket)+ADMIN_KEY).digest('hex').slice(0,24);
 }
-function validQr(token) {
-  const now = Math.floor(Date.now()/30000);
-  return token === qrToken(now) || token === qrToken(now-1);
-}
-function distanceMeters(lat1, lon1, lat2, lon2) {
-  const R=6371000, r=Math.PI/180;
-  const a=Math.sin((lat2-lat1)*r/2)**2 +
-    Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin((lon2-lon1)*r/2)**2;
-  return 2*R*Math.asin(Math.sqrt(a));
-}
-function authEmployee(req) {
-  const id = Number(req.headers["x-employee-id"]);
-  const password = String(req.headers["x-employee-password"] || "");
-  if (!id || !password) return null;
-  return db.prepare("SELECT * FROM employees WHERE id=? AND password=? AND active=1").get(id,password);
-}
-function admin(req) {
-  return String(req.headers["x-admin-key"] || "") === ADMIN_KEY;
-}
-
-app.get("/api/qr", (req,res)=>{
-  const bucket=Math.floor(Date.now()/30000);
-  const token=qrToken(bucket);
-  const site = `${req.protocol}://${req.get("host")}`;
-  res.json({ token, bucket, url:`${site}/?qr=${token}`, expiresIn:30 });
+function validQR(t){return t===qrToken() || t===crypto.createHash('sha256').update(String(Math.floor(Date.now()/30000)-1)+ADMIN_KEY).digest('hex').slice(0,24)}
+function dist(lat1,lon1,lat2,lon2){const R=6371000,p=Math.PI/180;let a=Math.sin((lat2-lat1)*p/2)**2+Math.cos(lat1*p)*Math.cos(lat2*p)*Math.sin((lon2-lon1)*p/2)**2;return 2*R*Math.asin(Math.sqrt(a))}
+function admin(req,res,next){if(req.header('x-admin-key')!==ADMIN_KEY)return res.status(401).json({error:'Sai mã quản lý'});next()}
+function empAuth(req,res,next){let e=db.prepare('SELECT * FROM employees WHERE id=? AND active=1').get(req.header('x-employee-id'));if(!e||sha(req.header('x-employee-password')||'')!==e.password_hash)return res.status(401).json({error:'Sai tài khoản hoặc mật khẩu'});req.emp=e;next()}
+app.get('/api/config',(q,r)=>r.json({lat:COMPANY_LAT,lng:COMPANY_LNG,radius:GPS_RADIUS}));
+app.get('/api/qr',(req,res)=>{
+ const token=qrToken();
+ const url=`${req.protocol}://${req.get('host')}/?qr=${token}`;
+ res.json({url,token,expiresIn:30});
 });
-
-app.post("/api/login", (req,res)=>{
-  const {employeeId,password}=req.body||{};
-  const e=db.prepare("SELECT id,name,department,salary FROM employees WHERE id=? AND password=? AND active=1").get(Number(employeeId),String(password||""));
-  if(!e) return res.status(401).json({error:"Sai mã nhân viên hoặc mật khẩu"});
-  res.json(e);
+app.get('/api/qr-image',(req,res)=>{
+ const token=qrToken();
+ const url=`${req.protocol}://${req.get('host')}/?qr=${token}`;
+ QRCode.toBuffer(url,{type:'png',width:360,margin:2,errorCorrectionLevel:'M'})
+   .then(buf=>{res.set('Content-Type','image/png');res.set('Cache-Control','no-store, no-cache, must-revalidate, max-age=0');res.send(buf)})
+   .catch(e=>res.status(500).json({error:'Không tạo được QR: '+e.message}));
 });
-
-app.get("/api/employees",(req,res)=>{
-  if(!admin(req)) return res.status(403).json({error:"Không có quyền"});
-  res.json(db.prepare("SELECT id,name,department,salary,active FROM employees ORDER BY active DESC,id").all());
+app.get('/api/employees',(q,r)=>r.json(db.prepare("SELECT id,name,phone,dept FROM employees WHERE active=1 ORDER BY name").all()));
+app.post('/api/login',(req,res)=>{let {employeeId,password}=req.body;let e=db.prepare('SELECT * FROM employees WHERE id=? AND active=1').get(employeeId);if(!e||sha(password||'')!==e.password_hash)return res.status(401).json({error:'Sai tài khoản hoặc mật khẩu'});res.json({id:e.id,name:e.name,dept:e.dept})});
+app.post('/api/punch/in',empAuth,(req,res)=>{
+ let {lat,lng,qrToken:qt}=req.body,d=dateVN(),t=timeVN(),dd=dist(Number(lat),Number(lng),COMPANY_LAT,COMPANY_LNG);
+ if(!validQR(qt))return res.status(400).json({error:'Mã QR đã hết hạn. Hãy quét lại QR tại nơi chấm công.'});
+ if(dd>GPS_RADIUS)return res.status(400).json({error:`Bạn đang cách điểm chấm công khoảng ${Math.round(dd)}m. Phạm vi cho phép ${GPS_RADIUS}m.`});
+ let a=db.prepare('SELECT * FROM attendance WHERE employee_id=? AND work_date=?').get(req.emp.id,d);
+ if(a?.time_in)return res.status(400).json({error:`Đã vào ca lúc ${a.time_in}`});
+ if(a)db.prepare('UPDATE attendance SET time_in=?,in_lat=?,in_lng=?,in_distance=?,status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(t,lat,lng,dd,'pending',a.id);
+ else db.prepare('INSERT INTO attendance(employee_id,work_date,time_in,in_lat,in_lng,in_distance) VALUES(?,?,?,?,?,?)').run(req.emp.id,d,t,lat,lng,dd);
+ db.prepare('INSERT INTO audit(action,employee_id,work_date,detail) VALUES(?,?,?,?)').run('VÀO CA',req.emp.id,d,`GPS ${Math.round(dd)}m`);
+ res.json({ok:true,time:t,date:d,distance:Math.round(dd)});
 });
-app.post("/api/employees",(req,res)=>{
-  if(!admin(req)) return res.status(403).json({error:"Không có quyền"});
-  const {name,department,salary,password}=req.body||{};
-  if(!name) return res.status(400).json({error:"Thiếu tên"});
-  const info=db.prepare("INSERT INTO employees(name,department,salary,password) VALUES(?,?,?,?)")
-    .run(name,department||"",Number(salary||0),password||"123456");
-  res.json({id:info.lastInsertRowid});
+app.post('/api/punch/out',empAuth,(req,res)=>{
+ let {lat,lng,qrToken:qt}=req.body,d=dateVN(),t=timeVN(),dd=dist(Number(lat),Number(lng),COMPANY_LAT,COMPANY_LNG);
+ if(!validQR(qt))return res.status(400).json({error:'Mã QR đã hết hạn. Hãy quét lại QR tại nơi chấm công.'});
+ if(dd>GPS_RADIUS)return res.status(400).json({error:`Bạn đang cách điểm chấm công khoảng ${Math.round(dd)}m. Phạm vi cho phép ${GPS_RADIUS}m.`});
+ let a=db.prepare('SELECT * FROM attendance WHERE employee_id=? AND work_date=?').get(req.emp.id,d);
+ if(!a?.time_in)return res.status(400).json({error:'Chưa vào ca hôm nay'});
+ if(a.time_out)return res.status(400).json({error:`Đã ra ca lúc ${a.time_out}`});
+ db.prepare('UPDATE attendance SET time_out=?,out_lat=?,out_lng=?,out_distance=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(t,lat,lng,dd,a.id);
+ db.prepare('INSERT INTO audit(action,employee_id,work_date,detail) VALUES(?,?,?,?)').run('RA CA',req.emp.id,d,`GPS ${Math.round(dd)}m`);
+ res.json({ok:true,time:t,date:d,distance:Math.round(dd)});
 });
-app.put("/api/employees/:id",(req,res)=>{
-  if(!admin(req)) return res.status(403).json({error:"Không có quyền"});
-  const {name,department,salary,password,active}=req.body||{};
-  db.prepare("UPDATE employees SET name=?,department=?,salary=?,password=?,active=? WHERE id=?")
-    .run(name,department||"",Number(salary||0),password||"123456",active===false?0:1,Number(req.params.id));
-  res.json({ok:true});
+app.get('/api/my-today',empAuth,(req,res)=>r(res,db.prepare('SELECT * FROM attendance WHERE employee_id=? AND work_date=?').get(req.emp.id,dateVN())||{}));
+app.get('/api/report',admin,(req,res)=>{
+ let month=req.query.month||dateVN().slice(0,7);
+ let rows=db.prepare(`SELECT a.*,e.name,e.dept,e.salary,e.standard_days,e.ot_rate FROM attendance a JOIN employees e ON e.id=a.employee_id WHERE substr(a.work_date,1,7)=? ORDER BY a.work_date,e.name`).all(month);
+ rows=rows.map(x=>({...x,hours:+hours(x.time_in,x.time_out).toFixed(2),ot:+Math.max(0,hours(x.time_in,x.time_out)-8).toFixed(2)}));res.json(rows)
 });
-
-app.get("/api/projects",(req,res)=>{
-  const all = db.prepare("SELECT * FROM projects WHERE active=1 ORDER BY id DESC").all();
-  res.json(all);
-});
-app.post("/api/projects",(req,res)=>{
-  if(!admin(req)) return res.status(403).json({error:"Không có quyền"});
-  const {name,address,lat,lng,radius}=req.body||{};
-  if(!name || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng)))
-    return res.status(400).json({error:"Thiếu tên hoặc tọa độ công trình"});
-  const info=db.prepare("INSERT INTO projects(name,address,lat,lng,radius) VALUES(?,?,?,?,?)")
-    .run(name,address||"",Number(lat),Number(lng),Number(radius||200));
-  res.json({id:info.lastInsertRowid});
-});
-app.put("/api/projects/:id",(req,res)=>{
-  if(!admin(req)) return res.status(403).json({error:"Không có quyền"});
-  const {name,address,lat,lng,radius,active}=req.body||{};
-  db.prepare("UPDATE projects SET name=?,address=?,lat=?,lng=?,radius=?,active=? WHERE id=?")
-    .run(name,address||"",Number(lat),Number(lng),Number(radius||200),active===false?0:1,Number(req.params.id));
-  res.json({ok:true});
-});
-
-app.get("/api/my-today",(req,res)=>{
-  const e=authEmployee(req); if(!e) return res.status(401).json({error:"Chưa đăng nhập"});
-  const rows=db.prepare(`
-    SELECT a.*,p.name project_name,p.address project_address
-    FROM attendance a JOIN projects p ON p.id=a.project_id
-    WHERE a.employee_id=? AND a.work_date=date('now','localtime')
-    ORDER BY a.id DESC`).all(e.id);
-  res.json(rows);
-});
-
-app.post("/api/punch",(req,res)=>{
-  const e=authEmployee(req); if(!e) return res.status(401).json({error:"Chưa đăng nhập"});
-  const {projectId,action,lat,lng,qrToken,note}=req.body||{};
-  if(!validQr(String(qrToken||""))) return res.status(400).json({error:"QR đã hết hạn. Quét lại QR tại công trình."});
-  const p=db.prepare("SELECT * FROM projects WHERE id=? AND active=1").get(Number(projectId));
-  if(!p) return res.status(404).json({error:"Không tìm thấy công trình"});
-  const dist=distanceMeters(Number(lat),Number(lng),p.lat,p.lng);
-  if(dist>p.radius) return res.status(400).json({error:`Bạn đang cách công trình khoảng ${Math.round(dist)}m, vượt bán kính cho phép ${p.radius}m.`});
-  const now=new Date(), date=now.toLocaleDateString("en-CA",{timeZone:"Asia/Ho_Chi_Minh"});
-  const time=now.toLocaleTimeString("en-GB",{timeZone:"Asia/Ho_Chi_Minh",hour12:false});
-  let row=db.prepare("SELECT * FROM attendance WHERE employee_id=? AND project_id=? AND work_date=? AND out_time IS NULL ORDER BY id DESC LIMIT 1").get(e.id,p.id,date);
-  if(action==="in"){
-    if(row) return res.status(400).json({error:"Bạn đang có ca chưa RA CA tại công trình này."});
-    const info=db.prepare("INSERT INTO attendance(employee_id,project_id,work_date,in_time,in_lat,in_lng,qr_bucket,note) VALUES(?,?,?,?,?,?,?,?)")
-      .run(e.id,p.id,date,time,Number(lat),Number(lng),Math.floor(Date.now()/30000),note||"");
-    db.prepare("INSERT INTO audit_log(action,employee_id,project_id,detail) VALUES(?,?,?,?)").run("IN",e.id,p.id,`Vào ca ${date} ${time}`);
-    return res.json({ok:true,id:info.lastInsertRowid,message:`Đã VÀO CA tại ${p.name} lúc ${time}`});
-  }
-  if(action==="out"){
-    if(!row) return res.status(400).json({error:"Không có ca đang mở tại công trình này."});
-    db.prepare("UPDATE attendance SET out_time=?,out_lat=?,out_lng=? WHERE id=?").run(time,Number(lat),Number(lng),row.id);
-    db.prepare("INSERT INTO audit_log(action,employee_id,project_id,detail) VALUES(?,?,?,?)").run("OUT",e.id,p.id,`Ra ca ${date} ${time}`);
-    return res.json({ok:true,message:`Đã RA CA tại ${p.name} lúc ${time}`});
-  }
-  res.status(400).json({error:"Action không hợp lệ"});
-});
-
-app.get("/api/report",(req,res)=>{
-  if(!admin(req)) return res.status(403).json({error:"Không có quyền"});
-  const month=String(req.query.month||new Date().toISOString().slice(0,7));
-  const rows=db.prepare(`
-    SELECT a.id,a.work_date,a.in_time,a.out_time,e.name employee_name,e.department,p.name project_name,
-      CASE WHEN a.in_time IS NOT NULL AND a.out_time IS NOT NULL
-      THEN round((julianday('2000-01-01 '||a.out_time)-julianday('2000-01-01 '||a.in_time))*24,2) ELSE 0 END hours
-    FROM attendance a JOIN employees e ON e.id=a.employee_id JOIN projects p ON p.id=a.project_id
-    WHERE substr(a.work_date,1,7)=? ORDER BY a.work_date,e.name,a.in_time`).all(month);
-  res.json(rows);
-});
-app.get("/api/audit",(req,res)=>{
-  if(!admin(req)) return res.status(403).json({error:"Không có quyền"});
-  res.json(db.prepare(`
-    SELECT l.*,e.name employee_name,p.name project_name
-    FROM audit_log l LEFT JOIN employees e ON e.id=l.employee_id LEFT JOIN projects p ON p.id=l.project_id
-    ORDER BY l.id DESC LIMIT 300`).all());
-});
-
-app.get("/",(req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
-app.listen(PORT,()=>console.log(`Moc1999 attendance running on ${PORT}`));
+app.post('/api/employees',admin,(req,res)=>{let {name,phone='',dept='',salary=0,standard=26,otRate=0,password='123456'}=req.body;if(!name)return res.status(400).json({error:'Thiếu tên'});let x=db.prepare('INSERT INTO employees(name,phone,dept,salary,standard_days,ot_rate,password_hash) VALUES(?,?,?,?,?,?,?)').run(name,phone,dept,+salary||0,+standard||26,+otRate||0,sha(password));res.json({id:x.lastInsertRowid})});
+app.put('/api/employees/:id',admin,(req,res)=>{let {name,phone='',dept='',salary=0,standard=26,otRate=0,password}=req.body;if(password)db.prepare('UPDATE employees SET name=?,phone=?,dept=?,salary=?,standard_days=?,ot_rate=?,password_hash=? WHERE id=?').run(name,phone,dept,+salary||0,+standard||26,+otRate||0,sha(password),req.params.id);else db.prepare('UPDATE employees SET name=?,phone=?,dept=?,salary=?,standard_days=?,ot_rate=? WHERE id=?').run(name,phone,dept,+salary||0,+standard||26,+otRate||0,req.params.id);res.json({ok:true})});
+app.delete('/api/employees/:id',admin,(req,res)=>{db.prepare('UPDATE employees SET active=0 WHERE id=?').run(req.params.id);res.json({ok:true})});
+app.get('/api/audit',admin,(req,res)=>res.json(db.prepare('SELECT a.*,e.name FROM audit a LEFT JOIN employees e ON e.id=a.employee_id ORDER BY a.id DESC LIMIT 500').all()));
+app.listen(PORT,()=>console.log('Moc1999 online on '+PORT));

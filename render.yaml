@@ -1,14 +1,22 @@
 services:
   - type: web
-    name: moc1999-cham-cong
-    env: node
+    name: moc1999-chamcong
+    runtime: node
+    plan: starter
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /
     envVars:
       - key: ADMIN_KEY
         sync: false
+      - key: COMPANY_LAT
+        value: "11.9404"
+      - key: COMPANY_LNG
+        value: "108.4583"
+      - key: GPS_RADIUS
+        value: "200"
       - key: DB_FILE
-        value: /var/data/moc1999.db
+        value: "/var/data/moc1999.db"
     disk:
       name: moc1999-data
       mountPath: /var/data

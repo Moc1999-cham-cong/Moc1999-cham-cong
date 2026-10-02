@@ -33,11 +33,14 @@ async function punch(type){if(!navigator.geolocation)return $('msg').innerHTML='
 function tab(x){$('staff').classList.toggle('hide',x!=='staff');$('manager').classList.toggle('hide',x!=='manager')}
 let key='';function manager(){key=$('akey').value;$('mlog').classList.add('hide');$('mapp').classList.remove('hide')}
 async function add(){try{await api('/api/employees',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':key},body:JSON.stringify({name:$('n').value,phone:$('phone').value,dept:$('dept').value,salary:$('sal').value,standard:$('std').value,otRate:$('otr').value,password:$('epw').value})});location.reload()}catch(e){alert(e.message)}}
+let qrTimer=null;
 async function showQR(){
  try{
-  let j=await api('/api/qr',{headers:{'x-admin-key':key}});
-  $('qrbox').innerHTML=`<img src="${j.data}" style="width:280px;max-width:100%;display:block;margin:10px auto"><div class="muted" style="text-align:center">QR đổi sau ${j.expiresIn} giây</div>`;
-  setTimeout(showQR,28000);
+  await api('/api/qr',{headers:{'x-admin-key':key}});
+  const src='/api/qr-image?v='+Date.now();
+  $('qrbox').innerHTML=`<img src="${src}" style="width:320px;height:320px;max-width:100%;display:block;margin:10px auto;object-fit:contain;background:#fff" onerror="this.parentElement.innerHTML='<div class=\"error\">Không tải được QR. Hãy bấm Hiện QR chấm công lại.</div>'"><div class="muted" style="text-align:center">QR tự đổi mỗi 30 giây</div>`;
+  clearTimeout(qrTimer);
+  qrTimer=setTimeout(showQR,30000);
  }catch(e){$('qrbox').innerHTML='<div class="error">'+e.message+'</div>'}
 }
 async function report(){try{let a=await api('/api/report?month='+$('month').value,{headers:{'x-admin-key':key}});let m={};a.forEach(r=>{let x=m[r.employee_id]||{name:r.name,days:0,h:0,ot:0};if(r.time_in)x.days++;x.h+=r.hours;x.ot+=r.ot;m[r.employee_id]=x});$('rep').innerHTML='<table><tr><th>Nhân viên</th><th>Ngày</th><th>Giờ</th><th>OT</th></tr>'+Object.values(m).map(x=>`<tr><td>${x.name}</td><td>${x.days}</td><td>${x.h.toFixed(2)}</td><td>${x.ot.toFixed(2)}</td></tr>`).join('')+'</table>';window._rows=a}catch(e){alert(e.message)}}
